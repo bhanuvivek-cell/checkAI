@@ -19,6 +19,8 @@ class AnalysisRecord(Base):
     facts_and_opinions = Column(JSON, nullable=False, default=list)
     logical_issues = Column(JSON, nullable=False, default=list)
     confidence = Column(JSON, nullable=False, default=dict)
+    counterarguments = Column(JSON, nullable=True, default=list)
+    evidence_verification = Column(JSON, nullable=True, default=dict)
     supporting_evidence = Column(JSON, nullable=False, default=list)
     missing_information = Column(JSON, nullable=False, default=list)
     potential_advantages = Column(JSON, nullable=False, default=list)
@@ -26,9 +28,13 @@ class AnalysisRecord(Base):
     
     recommended_next_step = Column(Text, nullable=False)
     alternative_approach = Column(Text, nullable=False)
+    calibrated_alternative = Column(Text, nullable=True)
     limitations_and_uncertainty = Column(Text, nullable=False)
     follow_up_questions = Column(JSON, nullable=False, default=list)
     is_demo_mode = Column(Boolean, default=False)
+    engine_used = Column(String(50), nullable=True, default="heuristic_fallback")
+    api_status = Column(String(50), nullable=True)
+    api_error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     # Relationships

@@ -16,6 +16,8 @@ from app.schemas import (
     VerdictEnum,
     CategoryEnum,
     ConfidenceMetric,
+    ConfidenceComponent,
+    EvidenceVerificationBreakdown,
     EvidenceItem,
     FactOpinionItem
 )
@@ -29,13 +31,24 @@ router = APIRouter(prefix="/api")
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint providing system status and AI provider information."""
+    api_stat = ai_service.last_api_status
+    api_msg = ai_service.last_api_message
+    
+    # If not run yet, determine initial state from config
+    if api_stat in ["ready", "demo_mode"]:
+        if not (settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip()):
+            api_stat = "not_configured"
+            api_msg = "OpenAI API key not configured. Running via Analytical Heuristic Engine."
+
     return HealthResponse(
         status="healthy",
         version="1.0.0",
         openai_configured=bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip()),
         openai_model=settings.OPENAI_MODEL,
-        demo_mode=settings.is_demo_mode,
-        database="SQLite (PostgreSQL Compatible via SQLAlchemy)"
+        demo_mode=(api_stat != "active"),
+        database="SQLite (PostgreSQL Compatible via SQLAlchemy)",
+        api_status=api_stat,
+        api_status_message=api_msg
     )
 
 @router.post("/analyze", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
@@ -61,6 +74,8 @@ async def analyze_input(
             verdict_explanation=analysis_result.verdict_explanation,
             detected_assumptions=analysis_result.detected_assumptions,
             facts_and_opinions=[fo.model_dump() for fo in analysis_result.facts_and_opinions],
+            counterarguments=analysis_result.counterarguments or [],
+            evidence_verification=analysis_result.evidence_verification.model_dump() if analysis_result.evidence_verification else {},
             logical_issues=analysis_result.logical_issues,
             confidence=analysis_result.confidence.model_dump(),
             supporting_evidence=[se.model_dump() for se in analysis_result.supporting_evidence],
@@ -69,9 +84,13 @@ async def analyze_input(
             potential_risks=analysis_result.potential_risks,
             recommended_next_step=analysis_result.recommended_next_step,
             alternative_approach=analysis_result.alternative_approach,
+            calibrated_alternative=analysis_result.calibrated_alternative or analysis_result.alternative_approach,
             limitations_and_uncertainty=analysis_result.limitations_and_uncertainty,
             follow_up_questions=analysis_result.follow_up_questions,
-            is_demo_mode=analysis_result.is_demo_mode
+            is_demo_mode=analysis_result.is_demo_mode,
+            engine_used=analysis_result.engine_used,
+            api_status=analysis_result.api_status,
+            api_error_message=analysis_result.api_error_message
         )
         db.add(record)
         await db.commit()
@@ -144,12 +163,30 @@ async def get_history_detail(
     # Reconstruct nested schemas
     facts_opinions = [FactOpinionItem(**fo) for fo in (record.facts_and_opinions or [])]
     evidence = [EvidenceItem(**se) for se in (record.supporting_evidence or [])]
+    
     conf_data = record.confidence or {}
+    comp_data = conf_data.get("components")
+    components = None
+    if comp_data and isinstance(comp_data, dict):
+        components = ConfidenceComponent(**comp_data)
+        
     confidence = ConfidenceMetric(
         rating=conf_data.get("rating", "Moderate"),
         score=conf_data.get("score", 70),
-        basis=conf_data.get("basis", "Assessed by standard critical evaluation.")
+        basis=conf_data.get("basis", "Assessed by standard 4-pillar critical evaluation."),
+        components=components,
+        limitations=conf_data.get("limitations", "Assessed using a 4-pillar analytical rubric; reflects argumentative rigor, not an absolute proof.")
     )
+
+    ev_data = record.evidence_verification or {}
+    ev_breakdown = None
+    if ev_data and isinstance(ev_data, dict):
+        ev_breakdown = EvidenceVerificationBreakdown(
+            established_facts=ev_data.get("established_facts", []),
+            user_provided_claims=ev_data.get("user_provided_claims", []),
+            logical_inferences=ev_data.get("logical_inferences", []),
+            unverified_claims=ev_data.get("unverified_claims", [])
+        )
 
     return AnalysisResponse(
         id=record.id,
@@ -158,7 +195,9 @@ async def get_history_detail(
         summary=record.summary,
         main_claim=record.main_claim,
         detected_assumptions=record.detected_assumptions or [],
+        evidence_verification=ev_breakdown,
         facts_and_opinions=facts_opinions,
+        counterarguments=record.counterarguments or [],
         logical_issues=record.logical_issues or [],
         verdict=VerdictEnum(record.verdict),
         verdict_explanation=record.verdict_explanation,
@@ -169,9 +208,13 @@ async def get_history_detail(
         potential_risks=record.potential_risks or [],
         recommended_next_step=record.recommended_next_step,
         alternative_approach=record.alternative_approach,
+        calibrated_alternative=record.calibrated_alternative or record.alternative_approach,
         limitations_and_uncertainty=record.limitations_and_uncertainty,
         follow_up_questions=record.follow_up_questions or [],
         is_demo_mode=record.is_demo_mode,
+        engine_used=record.engine_used or ("heuristic_fallback" if record.is_demo_mode else "openai_live"),
+        api_status=record.api_status,
+        api_error_message=record.api_error_message,
         created_at=record.created_at
     )
 
@@ -219,7 +262,6 @@ async def ask_follow_up(
             detail=f"Referenced analysis with ID {request.analysis_id} does not exist."
         )
 
-    # Process follow-up inquiry with AI service
     response = await ai_service.answer_follow_up(
         request=request,
         analysis_summary=record.summary,
@@ -227,7 +269,6 @@ async def ask_follow_up(
         verdict=record.verdict
     )
 
-    # Persist follow-up in DB
     follow_up_rec = FollowUpRecord(
         analysis_id=record.id,
         question=request.question,

@@ -115,10 +115,27 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
               {isHealthy === true ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="text-slate-300">
-                    {health?.demo_mode ? 'Analytical Heuristics (Demo)' : `OpenAI (${health?.openai_model})`}
-                  </span>
+                  {health?.api_status === 'quota_exceeded' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                      <span className="text-amber-300 font-medium">Heuristics (OpenAI Quota Exceeded)</span>
+                    </>
+                  ) : health?.api_status === 'auth_error' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                      <span className="text-rose-300 font-medium">Heuristics (Invalid API Key)</span>
+                    </>
+                  ) : health?.api_status === 'active' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span className="text-emerald-300 font-medium">OpenAI ({health?.openai_model})</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                      <span className="text-slate-300">Analytical Heuristics (Demo)</span>
+                    </>
+                  )}
                 </>
               ) : isHealthy === false ? (
                 <>

@@ -28,10 +28,27 @@ class EvidenceItem(BaseModel):
     source_url: Optional[str] = None
     credibility: Optional[str] = "Verified Domain / Credible Reference"
 
+class ConfidenceComponent(BaseModel):
+    empirical_verifiability: int = Field(default=15, ge=0, le=25, description="Testability against empirical data or scientific consensus (0-25)")
+    logical_validity: int = Field(default=18, ge=0, le=25, description="Coherence of reasoning and absence of fallacies (0-25)")
+    contextual_completeness: int = Field(default=15, ge=0, le=25, description="Degree to which boundary conditions and parameters are defined (0-25)")
+    epistemic_humility: int = Field(default=15, ge=0, le=25, description="Calibration of claims avoiding unhedged absolutes (0-25)")
+
 class ConfidenceMetric(BaseModel):
     rating: str = Field(description="High / Moderate / Low evidence or reasoning strength")
-    score: int = Field(ge=0, le=100, description="Quantitative reasoning firmness index")
+    score: int = Field(ge=0, le=100, description="Quantitative reasoning firmness index (sum of component scores)")
     basis: str = Field(description="Clear explanation of how this confidence score was derived")
+    components: Optional[ConfidenceComponent] = None
+    limitations: Optional[str] = Field(
+        default="Estimated using a 4-pillar analytical rubric; reflects argumentative rigor, not an absolute proof.",
+        description="Limitations and disclaimer of the score"
+    )
+
+class EvidenceVerificationBreakdown(BaseModel):
+    established_facts: List[str] = Field(default_factory=list, description="Objectively verifiable or consensus facts")
+    user_provided_claims: List[str] = Field(default_factory=list, description="Premises asserted directly by the user input")
+    logical_inferences: List[str] = Field(default_factory=list, description="Deductions or inferences that follow from premises")
+    unverified_claims: List[str] = Field(default_factory=list, description="Assertions that require external empirical testing")
 
 class AnalysisRequest(BaseModel):
     text: str = Field(..., min_length=5, max_length=5000, description="The statement, claim, plan, or decision to analyze")
@@ -47,7 +64,7 @@ class FollowUpResponse(BaseModel):
     analysis_id: int
     question: str
     answer: str
-    suggested_perspectives: List[str] = []
+    suggested_perspectives: List[str] = Field(default_factory=list)
     created_at: datetime
 
 class AnalysisResponse(BaseModel):
@@ -62,15 +79,21 @@ class AnalysisResponse(BaseModel):
     verdict: VerdictEnum
     verdict_explanation: str
     confidence: ConfidenceMetric
-    supporting_evidence: List[EvidenceItem] = []
-    missing_information: List[str] = []
-    potential_advantages: List[str] = []
-    potential_risks: List[str] = []
+    counterarguments: List[str] = Field(default_factory=list, description="Alternative explanations and contradictory considerations")
+    evidence_verification: Optional[EvidenceVerificationBreakdown] = None
+    supporting_evidence: List[EvidenceItem] = Field(default_factory=list)
+    missing_information: List[str] = Field(default_factory=list)
+    potential_advantages: List[str] = Field(default_factory=list)
+    potential_risks: List[str] = Field(default_factory=list)
     recommended_next_step: str
     alternative_approach: str
+    calibrated_alternative: Optional[str] = None
     limitations_and_uncertainty: str
-    follow_up_questions: List[str] = []
+    follow_up_questions: List[str] = Field(default_factory=list)
     is_demo_mode: bool = False
+    engine_used: str = Field(default="heuristic_fallback", description="'openai_live' or 'heuristic_fallback'")
+    api_status: Optional[str] = Field(default=None, description="e.g. 'live_success', 'quota_exceeded', 'rate_limited', 'auth_error', 'not_configured'")
+    api_error_message: Optional[str] = None
     created_at: Optional[datetime] = None
 
 class AnalysisHistoryItem(BaseModel):
@@ -90,3 +113,5 @@ class HealthResponse(BaseModel):
     openai_model: str
     demo_mode: bool
     database: str
+    api_status: str = Field(default="demo_mode", description="'active', 'quota_exceeded', 'auth_error', 'not_configured', 'demo_mode'")
+    api_status_message: str = ""

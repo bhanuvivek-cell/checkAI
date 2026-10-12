@@ -25,10 +25,26 @@ export interface EvidenceItem {
   credibility?: string;
 }
 
+export interface ConfidenceComponent {
+  empirical_verifiability: number;
+  logical_validity: number;
+  contextual_completeness: number;
+  epistemic_humility: number;
+}
+
 export interface ConfidenceMetric {
   rating: string;
   score: number;
   basis: string;
+  components?: ConfidenceComponent;
+  limitations?: string;
+}
+
+export interface EvidenceVerificationBreakdown {
+  established_facts: string[];
+  user_provided_claims: string[];
+  logical_inferences: string[];
+  unverified_claims: string[];
 }
 
 export interface AnalysisResponse {
@@ -38,7 +54,9 @@ export interface AnalysisResponse {
   summary: string;
   main_claim: string;
   detected_assumptions: string[];
+  evidence_verification?: EvidenceVerificationBreakdown;
   facts_and_opinions: FactOpinionItem[];
+  counterarguments?: string[];
   logical_issues: string[];
   verdict: VerdictType;
   verdict_explanation: string;
@@ -49,9 +67,13 @@ export interface AnalysisResponse {
   potential_risks: string[];
   recommended_next_step: string;
   alternative_approach: string;
+  calibrated_alternative?: string;
   limitations_and_uncertainty: string;
   follow_up_questions: string[];
   is_demo_mode: boolean;
+  engine_used?: 'openai_live' | 'heuristic_fallback' | string;
+  api_status?: string;
+  api_error_message?: string;
   created_at?: string;
 }
 
@@ -80,4 +102,6 @@ export interface HealthStatus {
   openai_model: string;
   demo_mode: boolean;
   database: string;
+  api_status?: string;
+  api_status_message?: string;
 }

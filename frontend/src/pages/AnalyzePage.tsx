@@ -137,31 +137,45 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({
 
   const handleCopyResults = () => {
     if (!result) return;
+    const rubricText = result.confidence.components 
+      ? `\n- Empirical Verifiability: ${result.confidence.components.empirical_verifiability}/25\n- Logical Validity: ${result.confidence.components.logical_validity}/25\n- Contextual Completeness: ${result.confidence.components.contextual_completeness}/25\n- Epistemic Humility: ${result.confidence.components.epistemic_humility}/25`
+      : '';
+
     const textToCopy = `
 # ASSUMPTION CHECK AI ANALYSIS
 Input: "${result.original_input}"
 Category: ${result.category}
 Verdict: ${result.verdict}
-Confidence: ${result.confidence.score}/100 (${result.confidence.rating})
+Engine: ${result.engine_used === 'openai_live' && !result.is_demo_mode ? 'OpenAI Live Model' : 'Analytical Heuristic Engine'}
+Confidence: ${result.confidence.score}/100 (${result.confidence.rating})${rubricText}
 Summary: ${result.summary}
 
-## Main Claim
+## 1. Main Claim
 ${result.main_claim}
 
-## Verdict Explanation
+## 2. Verdict Explanation
 ${result.verdict_explanation}
 
-## Assumptions Detected
+## 3. Assumptions Detected
 ${result.detected_assumptions.map(a => `- ${a}`).join('\n')}
 
-## Logical Issues
+## 4. Counterarguments & Alternative Explanations
+${(result.counterarguments || []).map(c => `- ${c}`).join('\n') || '- None noted.'}
+
+## 5. Logical Issues & Fallacies
 ${result.logical_issues.map(l => `- ${l}`).join('\n')}
 
-## Recommended Next Step
+## 6. Recommended Next Step
 ${result.recommended_next_step}
 
-## Alternative Approach
+## 7. Calibrated Alternative Statement
+${result.calibrated_alternative || result.alternative_approach}
+
+## 8. Alternative Approach
 ${result.alternative_approach}
+
+## 9. Epistemic Limitations & Uncertainty
+${result.limitations_and_uncertainty}
     `.trim();
 
     navigator.clipboard.writeText(textToCopy);
@@ -362,6 +376,48 @@ ${result.alternative_approach}
       {/* Result Dashboard */}
       {result && !loading && (
         <div className="space-y-8 animate-fadeIn">
+          {/* OpenAI Quota Exceeded / Error Banner */}
+          {result.api_status === 'quota_exceeded' && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm flex items-start gap-3 shadow-xl">
+              <AlertTriangle size={22} className="shrink-0 mt-0.5 text-amber-400" />
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-bold text-amber-300">OpenAI Quota Exceeded (Error 429: insufficient_quota)</h4>
+                  <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Analytical Heuristic Engine Used
+                  </span>
+                </div>
+                <p className="text-xs text-amber-200/90 leading-relaxed">
+                  Your configured OpenAI account has exhausted its available billing credits. This evaluation was processed via our transparent <strong>Analytical Heuristic Engine</strong> rather than the live OpenAI model.
+                </p>
+                <div className="pt-1 flex flex-wrap items-center gap-4 text-xs">
+                  <a 
+                    href="https://platform.openai.com/billing" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-flex items-center gap-1 font-semibold text-white underline hover:text-amber-200 transition-colors"
+                  >
+                    <span>Add OpenAI Credits at platform.openai.com/billing</span>
+                    <ArrowRight size={12} />
+                  </a>
+                  <span className="text-slate-400 text-[11px]">• No generic filler was substituted</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {result.api_status === 'auth_error' && (
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-sm flex items-start gap-3 shadow-xl">
+              <AlertTriangle size={20} className="shrink-0 mt-0.5 text-rose-400" />
+              <div>
+                <p className="font-bold text-rose-300">OpenAI Authentication Failed (Error 401)</p>
+                <p className="text-xs text-rose-200/90 mt-0.5">
+                  The configured OPENAI_API_KEY is invalid or revoked. Analysis was rendered using the Analytical Heuristic Engine.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Top Banner: Verdict & Actions */}
           <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-6 sm:p-8 shadow-2xl space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
@@ -374,13 +430,17 @@ ${result.alternative_approach}
                   <span className="text-xs px-2.5 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700">
                     Category: {result.category}
                   </span>
-                  {result.is_demo_mode ? (
-                    <span className="text-xs px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      Heuristic Engine (Demo)
+                  {result.engine_used === 'openai_live' && !result.is_demo_mode ? (
+                    <span className="text-xs px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                      Live AI Model (gpt-4o-mini)
+                    </span>
+                  ) : result.api_status === 'quota_exceeded' ? (
+                    <span className="text-xs px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                      Heuristic Engine (Quota Exceeded Fallback)
                     </span>
                   ) : (
-                    <span className="text-xs px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Live AI Reasoning
+                    <span className="text-xs px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                      Analytical Heuristic Engine (Demo)
                     </span>
                   )}
                 </div>
@@ -452,6 +512,33 @@ ${result.alternative_approach}
                       style={{ width: `${result.confidence.score}%` }}
                     />
                   </div>
+
+                  {/* 4-Pillar Transparent Rubric Breakdown */}
+                  {result.confidence.components && (
+                    <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-2">
+                      <span className="text-[10px] uppercase font-mono text-slate-400 block font-semibold">
+                        4-Pillar Rubric Breakdown:
+                      </span>
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                          <span className="text-slate-400 block">Verifiability</span>
+                          <span className="font-bold text-white font-mono">{result.confidence.components.empirical_verifiability}/25</span>
+                        </div>
+                        <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                          <span className="text-slate-400 block">Logic & Validity</span>
+                          <span className="font-bold text-white font-mono">{result.confidence.components.logical_validity}/25</span>
+                        </div>
+                        <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                          <span className="text-slate-400 block">Completeness</span>
+                          <span className="font-bold text-white font-mono">{result.confidence.components.contextual_completeness}/25</span>
+                        </div>
+                        <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                          <span className="text-slate-400 block">Calibration</span>
+                          <span className="font-bold text-white font-mono">{result.confidence.components.epistemic_humility}/25</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3 pt-3 border-t border-slate-800/60">
                   <span className="text-[10px] uppercase font-mono text-slate-500 block">Metric Basis:</span>
@@ -528,6 +615,32 @@ ${result.alternative_approach}
             </div>
           </div>
 
+          {/* Section 2.5: Counterarguments & Alternative Explanations */}
+          {result.counterarguments && result.counterarguments.length > 0 && (
+            <div className="rounded-2xl bg-slate-900/70 border border-slate-800 p-6 space-y-4 shadow-xl">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                  <Scale size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">Counterarguments & Alternative Explanations</h3>
+                  <p className="text-xs text-slate-400">Plausible conflicting perspectives and edge cases challenging the premise.</p>
+                </div>
+              </div>
+
+              <ul className="space-y-2.5">
+                {result.counterarguments.map((item, idx) => (
+                  <li key={idx} className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs sm:text-sm text-slate-300 flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
+                      {idx + 1}
+                    </span>
+                    <span className="leading-relaxed">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Section 3: Facts vs Opinions vs Predictions Breakdown */}
           {result.facts_and_opinions && result.facts_and_opinions.length > 0 && (
             <div className="rounded-2xl bg-slate-900/70 border border-slate-800 p-6 space-y-4 shadow-xl">
@@ -554,6 +667,74 @@ ${result.alternative_approach}
                     <p className="text-xs text-slate-400 leading-relaxed">{fo.assessment}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section 3.5: Evidence & Verification Categorization */}
+          {result.evidence_verification && (
+            <div className="rounded-2xl bg-slate-900/70 border border-slate-800 p-6 space-y-4 shadow-xl">
+              <div>
+                <h3 className="text-base font-semibold text-white">Evidence & Verification Breakdown</h3>
+                <p className="text-xs text-slate-400">Systematic separation of established facts, user-provided assertions, logical deductions, and unverified claims.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                {/* Established Facts */}
+                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-emerald-500/30 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block flex items-center gap-1">
+                    <CheckCircle2 size={13} /> Established Facts
+                  </span>
+                  {result.evidence_verification.established_facts && result.evidence_verification.established_facts.length > 0 ? (
+                    result.evidence_verification.established_facts.map((ef, i) => (
+                      <p key={i} className="text-slate-300 leading-relaxed">• {ef}</p>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">None empirically established.</p>
+                  )}
+                </div>
+
+                {/* User Claims */}
+                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-blue-500/30 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block flex items-center gap-1">
+                    <Layers size={13} /> User-Provided Claims
+                  </span>
+                  {result.evidence_verification.user_provided_claims && result.evidence_verification.user_provided_claims.length > 0 ? (
+                    result.evidence_verification.user_provided_claims.map((uc, i) => (
+                      <p key={i} className="text-slate-300 leading-relaxed">• {uc}</p>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">No specific premise isolated.</p>
+                  )}
+                </div>
+
+                {/* Logical Inferences */}
+                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-purple-500/30 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block flex items-center gap-1">
+                    <Cpu size={13} /> Logical Inferences
+                  </span>
+                  {result.evidence_verification.logical_inferences && result.evidence_verification.logical_inferences.length > 0 ? (
+                    result.evidence_verification.logical_inferences.map((li, i) => (
+                      <p key={i} className="text-slate-300 leading-relaxed">• {li}</p>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">No deductions derived.</p>
+                  )}
+                </div>
+
+                {/* Unverified Claims */}
+                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-amber-500/30 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block flex items-center gap-1">
+                    <AlertTriangle size={13} /> Unverified Claims
+                  </span>
+                  {result.evidence_verification.unverified_claims && result.evidence_verification.unverified_claims.length > 0 ? (
+                    result.evidence_verification.unverified_claims.map((uv, i) => (
+                      <p key={i} className="text-slate-300 leading-relaxed">• {uv}</p>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">None flagged as unverified.</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -597,24 +778,34 @@ ${result.alternative_approach}
             </div>
           </div>
 
-          {/* Section 5: Actionable Decision Guidance (Next Step & Alternative) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Section 5: Actionable Decision Guidance (Next Step, Calibrated Alternative, Alternative Approach) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Recommended Next Step */}
             <div className="rounded-2xl bg-gradient-to-br from-brand-950/60 to-slate-900 border border-brand-500/30 p-6 space-y-3">
               <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-brand-300 flex items-center gap-1.5">
-                <Sparkles size={13} /> Recommended Immediate Next Step
+                <Sparkles size={13} /> Recommended Next Step
               </span>
-              <p className="text-sm text-slate-200 leading-relaxed font-medium">
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
                 {result.recommended_next_step}
+              </p>
+            </div>
+
+            {/* Calibrated Alternative Statement */}
+            <div className="rounded-2xl bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 p-6 space-y-3">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                <ShieldCheck size={13} /> Calibrated Alternative Statement
+              </span>
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
+                {result.calibrated_alternative || result.alternative_approach}
               </p>
             </div>
 
             {/* Alternative Approach */}
             <div className="rounded-2xl bg-gradient-to-br from-indigo-950/60 to-slate-900 border border-indigo-500/30 p-6 space-y-3">
               <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-                <Compass size={13} /> Calibrated Alternative Approach
+                <Compass size={13} /> Alternative Approach
               </span>
-              <p className="text-sm text-slate-200 leading-relaxed font-medium">
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
                 {result.alternative_approach}
               </p>
             </div>
